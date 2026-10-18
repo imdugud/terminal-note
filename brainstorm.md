@@ -13,4 +13,4 @@
 |MVP|Domain `add`/`list` (max 3, ilk kurulumda tanımlama). Task `add` (tek domain zorunlu, opsiyonel tarih: `gün.ay.yıl`, `today`, `tomorrow`), `list today`, `done`. Journal `add` (saatle kaydedilir), `list today`. `today` görünümü (bugünkü + gecikmiş task’ler ve bugünkü journal). Düz metin kayıt, kalıcı ID’ler, `help`.|
 |v1|Task `edit`, `remove`, `undone`. Task filtreleri (`week`, `overdue`, `all`, `-d domain`). Journal’ı tarihe göre listeleme. Domain `remove` (içinde task varsa taşıma kuralı). Tag’ler (`-t`) ve `tag list`. Tarih doğrulama.|
 |v2|Calendar (`add`, `list week/month`, `edit`, `remove`, opsiyonel saat). Ideas (`add`, `list`, `remove`). Idea → task dönüştürme. `today` görünümüne calendar eklenmesi. Genel arama (`search`).|
-|later|Kısa komut alias’ları, git ile yedekleme/senkronizasyon, tekrarlayan etkinlikler, dışa aktarma (Markdown), renkli çıktı.|
+|later|Kısa komut alias’ları, git ile yedekleme/senkronizasyon, tekrarlayan etkinlikler, dışa aktarma (Markdown), renkli çıktı.| 
