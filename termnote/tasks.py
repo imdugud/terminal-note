@@ -6,32 +6,44 @@ from .dates import format_date, parse_date_arg, parse_stored_date
 from .domains import require_domain
 from .storage import TASKS_PATH
 
-METADATA_RE = re.compile(r"\(\d{2}-\d{2}-\d{4}\)|@\S+|#\S+|\^\d+")
-LINE_RE = re.compile(r"-\s*\[( |x)\]\s*(.*)")
+# Tokens must stand alone, so "x^2" or "a@b.com" in task text is not metadata.
+METADATA_RE = re.compile(
+    r"(?<!\S)(?:\(\d{2}-\d{2}-\d{4}\)|@\S+|#\S+|\^\d+)(?!\S)"
+)
+LINE_RE = re.compile(r"(\s*-\s*\[)([ xX])(\]\s*)(.*)")
 
 
 def parse_task_line(line):
-    line = line.rstrip("\n")
-    if not line.strip():
-        return None
-    m = LINE_RE.match(line)
+    m = LINE_RE.match(line.rstrip("\r\n"))
     if not m:
         return None
-    done = m.group(1) == "x"
-    rest = m.group(2)
-    tokens = METADATA_RE.findall(rest)
-    text = METADATA_RE.sub("", rest).strip()
-    task_date = next((t[1:-1] for t in tokens if t.startswith("(")), None)
-    domain = next((t[1:] for t in tokens if t.startswith("@")), None)
-    tags = [t[1:] for t in tokens if t.startswith("#")]
-    task_id = next((int(t[1:]) for t in tokens if t.startswith("^")), None)
+    rest = m.group(4)
+    tags = []
+    last = {}
+    for token in METADATA_RE.finditer(rest):
+        kind = token.group()[0]
+        if kind == "#":
+            tags.append(token)
+        else:
+            # format_task_line writes metadata after the text, so the last
+            # token of a kind is the real one; earlier ones are task text.
+            last[kind] = token
+
+    text = rest
+    metadata = tags + list(last.values())
+    for token in sorted(metadata, key=lambda t: t.start(), reverse=True):
+        # Join around the token, leaving other spacing in the text alone.
+        before = text[: token.start()].rstrip()
+        after = text[token.end() :].lstrip()
+        text = f"{before} {after}"
+
     return {
-        "id": task_id,
-        "done": done,
-        "text": text,
-        "date": task_date,
-        "domain": domain,
-        "tags": tags,
+        "id": int(last["^"].group()[1:]) if "^" in last else None,
+        "done": m.group(2) != " ",
+        "text": text.strip(),
+        "date": last["("].group()[1:-1] if "(" in last else None,
+        "domain": last["@"].group()[1:] if "@" in last else None,
+        "tags": [t.group()[1:] for t in tags],
     }
 
 
@@ -48,22 +60,22 @@ def format_task_line(task):
     return " ".join(parts)
 
 
-def read_tasks():
+def read_lines():
     if not TASKS_PATH.exists():
         return []
-    tasks = []
-    with open(TASKS_PATH) as f:
-        for line in f:
-            parsed = parse_task_line(line)
-            if parsed:
-                tasks.append(parsed)
-    return tasks
+    # newline="" keeps the file's own line endings intact on rewrite.
+    with open(TASKS_PATH, newline="") as f:
+        return f.readlines()
 
 
-def write_tasks(tasks):
-    with open(TASKS_PATH, "w") as f:
-        for t in tasks:
-            f.write(format_task_line(t) + "\n")
+def write_lines(lines):
+    with open(TASKS_PATH, "w", newline="") as f:
+        f.writelines(lines)
+
+
+def read_tasks():
+    parsed = (parse_task_line(line) for line in read_lines())
+    return [t for t in parsed if t]
 
 
 def next_task_id():
@@ -88,39 +100,56 @@ def add_task(text, domain, tags=None, date_arg="today"):
         "domain": domain,
         "tags": tags or [],
     }
-    tasks = read_tasks()
-    tasks.append(task)
-    write_tasks(tasks)
+    # Append rather than rewrite, so hand-edited content is never touched.
+    lines = read_lines()
+    needs_newline = bool(lines) and not lines[-1].endswith(("\n", "\r"))
+    with open(TASKS_PATH, "a", newline="") as f:
+        f.write(("\n" if needs_newline else "") + format_task_line(task) + "\n")
     return task
+
+
+def _stored_date(task):
+    """The task's date, or None if it is missing or impossible (hand-edited)."""
+    if not task["date"]:
+        return None
+    try:
+        return parse_stored_date(task["date"])
+    except ValueError:
+        return None
 
 
 def list_today():
     today = date.today()
-    result = []
-    for t in read_tasks():
-        if t["done"] or not t["date"]:
-            continue
-        if parse_stored_date(t["date"]) == today:
-            result.append(t)
-    return result
+    return [t for t in read_tasks() if not t["done"] and _stored_date(t) == today]
 
 
 def list_overdue():
     today = date.today()
     result = []
     for t in read_tasks():
-        if t["done"] or not t["date"]:
-            continue
-        if parse_stored_date(t["date"]) < today:
+        task_date = _stored_date(t)
+        if not t["done"] and task_date and task_date < today:
             result.append(t)
     return result
 
 
+def list_invalid_dates():
+    """Open tasks whose date can't exist; no date listing can include them."""
+    return [
+        t
+        for t in read_tasks()
+        if not t["done"] and t["date"] and _stored_date(t) is None
+    ]
+
+
 def mark_done(task_id):
-    tasks = read_tasks()
-    for t in tasks:
-        if t["id"] == task_id:
+    lines = read_lines()
+    for i, line in enumerate(lines):
+        t = parse_task_line(line)
+        if t and t["id"] == task_id:
+            # Change only the checkbox, so the rest of the line stays as written.
+            lines[i] = LINE_RE.sub(r"\g<1>x\g<3>\g<4>", line, count=1)
+            write_lines(lines)
             t["done"] = True
-            write_tasks(tasks)
             return t
     raise ValueError(f"No task with id ^{task_id}")
