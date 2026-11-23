@@ -40,6 +40,14 @@ def build_parser():
     return parser
 
 
+def warn_invalid_dates():
+    for t in tasks.list_invalid_dates():
+        print(
+            f"Warning: invalid date, not listed: {tasks.format_task_line(t)}",
+            file=sys.stderr,
+        )
+
+
 def main(argv=None):
     ensure_storage()
     parser = build_parser()
@@ -63,6 +71,7 @@ def main(argv=None):
             elif args.action == "list":
                 for t in tasks.list_today():
                     print(tasks.format_task_line(t))
+                warn_invalid_dates()
             elif args.action == "done":
                 t = tasks.mark_done(args.id)
                 print(f"Done: {tasks.format_task_line(t)}")
@@ -81,6 +90,7 @@ def main(argv=None):
 
         elif args.entity == "today":
             today_view.print_today()
+            warn_invalid_dates()
 
         else:
             parser.print_help()

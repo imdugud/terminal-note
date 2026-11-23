@@ -15,7 +15,7 @@ bin/note task add "PR'ı incele" -d iş -t frontend --date tomorrow
 bin/note today
 ```
 
-There are no tests, linter or build step yet.
+Tests: `python3 -m unittest discover -s tests -t .` (no linter or build step).
 
 **Every command touches real user data** in `~/Documents/note/`, which is
 hardcoded via `Path.home()`. When trying things out, use a throwaway home:
@@ -42,6 +42,10 @@ HOME="$(mktemp -d)" bin/note domain add test
 - Python stdlib only.
 - Task line: `- [ ] text (DD-MM-YYYY) @domain #tag ^id`. Metadata tokens may
   appear in any order, because users hand-edit these files in vim.
+  Tokens must be whitespace-delimited; the last date, `@` and `^` win and earlier
+  ones are text.
+- Never rewrite lines that aren't being changed: `add` appends, `done` edits only
+  the checkbox. Lines that aren't tasks must survive.
 - IDs are global and never reused:
   `max(config.last_id, highest id in tasks.md) + 1`.
 - At most 3 domains; `task add` rejects unregistered ones and never creates them.
@@ -50,11 +54,7 @@ HOME="$(mktemp -d)" bin/note domain add test
 
 ## Known issues
 
-- `write_tasks` drops any line `parse_task_line` can't parse (headings, notes,
-  indented tasks, `[X]`), so a rewrite loses data.
-- `METADATA_RE` matches inside words: `x^2`, `a@b.com` and `#12` in task text
-  are read as ID, domain and tag.
-- An impossible stored date, e.g. `(31-02-2026)`, on an open task makes `today`
-  and `task list` fail.
+- A standalone `#word` in task text is always read as a tag.
 - Domain and tag names aren't validated (spaces, commas, `%`).
 - Files are opened without an explicit encoding, though content is Turkish.
+- File writes are not atomic.
