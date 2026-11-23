@@ -1,0 +1,60 @@
+# CLAUDE.md
+
+Terminal Note (`note`): a single-user CLI for tasks and journaling, stored as
+plain text. Goals and roadmap (MVP → v1 → v2) are in
+`Documentations/project_spec.md`; `Documentations/brainstorm.md` is the original
+idea (Turkish). The MVP is implemented; check the spec for a feature's version
+before adding it.
+
+## Running
+
+```sh
+bin/note <entity> <action> [flags]     # or: python3 main.py ...
+bin/note domain add iş
+bin/note task add "PR'ı incele" -d iş -t frontend --date tomorrow
+bin/note today
+```
+
+There are no tests, linter or build step yet.
+
+**Every command touches real user data** in `~/Documents/note/`, which is
+hardcoded via `Path.home()`. When trying things out, use a throwaway home:
+
+```sh
+HOME="$(mktemp -d)" bin/note domain add test
+```
+
+## Architecture
+
+`bin/note` → `main.py` → `termnote/cli.py` (argparse, entity then action).
+
+- `cli.py`: parsing and dispatch; prints results. Handlers raise `ValueError`
+  for user errors, which `main` prints to stderr with exit code 1.
+- `tasks.py`: task line parse/format, ID assignment, queries
+- `domains.py`, `config.py`: registered domains and `last_id` (INI)
+- `journal.py`: append/list per-day entries
+- `today_view.py`: combined today + overdue + journal output
+- `dates.py`: all date parsing/formatting
+- `storage.py`: all paths; add new ones here
+
+## Rules to preserve
+
+- Python stdlib only.
+- Task line: `- [ ] text (DD-MM-YYYY) @domain #tag ^id`. Metadata tokens may
+  appear in any order, because users hand-edit these files in vim.
+- IDs are global and never reused:
+  `max(config.last_id, highest id in tasks.md) + 1`.
+- At most 3 domains; `task add` rejects unregistered ones and never creates them.
+- Dates are `DD-MM-YYYY` for input and task lines. Journal filenames are ISO
+  (`YYYY-MM-DD.md`) so they sort. Some spec examples disagree; follow the code.
+
+## Known issues
+
+- `write_tasks` drops any line `parse_task_line` can't parse (headings, notes,
+  indented tasks, `[X]`), so a rewrite loses data.
+- `METADATA_RE` matches inside words: `x^2`, `a@b.com` and `#12` in task text
+  are read as ID, domain and tag.
+- An impossible stored date, e.g. `(31-02-2026)`, on an open task makes `today`
+  and `task list` fail.
+- Domain and tag names aren't validated (spaces, commas, `%`).
+- Files are opened without an explicit encoding, though content is Turkish.
